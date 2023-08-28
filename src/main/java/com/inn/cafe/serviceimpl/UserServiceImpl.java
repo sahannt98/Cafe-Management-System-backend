@@ -1,6 +1,7 @@
 package com.inn.cafe.serviceimpl;
 
 import com.inn.cafe.JWT.CustomerUserDetailsService;
+import com.inn.cafe.JWT.JwtAuthFilter;
 import com.inn.cafe.JWT.JwtUtil;
 import com.inn.cafe.POJO.Role;
 import com.inn.cafe.POJO.User;
@@ -8,6 +9,8 @@ import com.inn.cafe.constants.CafeConstants;
 import com.inn.cafe.dao.UserDao;
 import com.inn.cafe.service.UserService;
 import com.inn.cafe.utils.CafeUtils;
+import com.inn.cafe.utils.EmailUtils;
+import com.inn.cafe.wrapper.UserWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,8 +22,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -36,6 +38,10 @@ public class UserServiceImpl implements UserService {
     private final JwtUtil jwtUtil;
 
     private final PasswordEncoder passwordEncoder;
+
+    private final JwtAuthFilter jwtAuthFilter;
+
+    private final EmailUtils emailUtils;
 
 
     @Override
@@ -83,6 +89,59 @@ public class UserServiceImpl implements UserService {
         }
         return new ResponseEntity<String>("{\"message\":\""+"Bad credentials"+"\"}",
                 HttpStatus.BAD_REQUEST);
+    }
+
+    @Override
+    public ResponseEntity<List<UserWrapper>> getAllUsers() {
+        try {
+            if (jwtAuthFilter.isAdmin()){
+                return new ResponseEntity<>(userDao.getAllUsers(), HttpStatus.OK);
+            }
+            return new ResponseEntity<>(new ArrayList<>(), HttpStatus.UNAUTHORIZED);
+        }catch (Exception ex){
+            ex.printStackTrace();
+        }
+        return new ResponseEntity<>(new ArrayList<>(), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Override
+    public ResponseEntity<String> update(Map<String, String> requestMap) {
+        try {
+            if (jwtAuthFilter.isAdmin()){
+                Optional<User> optionalUser = userDao.findById(Integer.parseInt(requestMap.get("id")));
+                if (optionalUser.isPresent()){
+                    userDao.updateStatus(requestMap.get("status"), Integer.parseInt(requestMap.get("id")));
+                    sendMailToAllAdmins(requestMap.get("status"), optionalUser.get().getEmail(), userDao.getAllAdmins());
+                    return CafeUtils.getResponseEntity("User status updated successfully", HttpStatus.OK);
+                }
+                return CafeUtils.getResponseEntity("User id doesn't exits", HttpStatus.OK);
+            }
+            return CafeUtils.getResponseEntity(CafeConstants.UNAUTHORIZED_ACCESS, HttpStatus.UNAUTHORIZED);
+        }catch (Exception ex){
+            ex.printStackTrace();
+        }
+        return  CafeUtils.getResponseEntity(CafeConstants.SOMETHING_WENT_WRONG, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    private void sendMailToAllAdmins(String status, String user, List<String> allAdmins) {
+        allAdmins.remove(jwtAuthFilter.getCurrentUser());
+        if (status != null && status.equalsIgnoreCase("true")){
+            emailUtils.sendSimpleMessage(
+                    jwtAuthFilter.getCurrentUser(),
+                    "Account Approved",
+                    "USER:- "+user+"\n " +
+                    "is approved by \n ADMIN :-"+jwtAuthFilter.getCurrentUser(),
+                    allAdmins
+            );
+        }else{
+            emailUtils.sendSimpleMessage(
+                    jwtAuthFilter.getCurrentUser(),
+                    "Account Disabled",
+                    "USER:- "+user+"\n " +
+                            "is disabled by \n ADMIN :-"+jwtAuthFilter.getCurrentUser(),
+                    allAdmins
+            );
+        }
     }
 
     private boolean validateSignUpMap(Map<String, String> requestMap) {
