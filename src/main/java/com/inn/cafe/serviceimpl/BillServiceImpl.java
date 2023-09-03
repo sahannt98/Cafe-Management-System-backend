@@ -20,10 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -127,6 +125,21 @@ public class BillServiceImpl implements BillService {
             ex.printStackTrace();
         }
         return new ResponseEntity<>(new byte[0], HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Override
+    public ResponseEntity<String> deleteBill(Integer id) {
+        try {
+            Optional<Bill> optional = billDao.findById(id);
+            if (optional.isPresent()){
+                billDao.deleteById(id);
+                return CafeUtils.getResponseEntity("Bill deleted successfully", HttpStatus.OK);
+            }
+            return CafeUtils.getResponseEntity("Bill id doesn't exist", HttpStatus.OK);
+        }catch (Exception ex){
+            ex.printStackTrace();
+        }
+        return CafeUtils.getResponseEntity(CafeConstants.SOMETHING_WENT_WRONG, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     private byte[] getByteArray(String filePath) throws IOException {
